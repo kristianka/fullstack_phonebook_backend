@@ -5,40 +5,37 @@ const cors = require("cors");
 const Person = require("./models/person");
 const PORT = process.env.PORT || 3001;
 
-morgan.token('body', req => {
+morgan.token("body", req => {
     return JSON.stringify(req.body);
 });
 
 app.use(express.json());
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'));
+app.use(morgan(":method :url :status :res[content-length] - :response-time ms :body"));
 app.use(cors());
-app.use(express.static('build'));
+app.use(express.static("build"));
 
 const unknownEndpoint = (req, res) => {
-    res.status(404).send("Not found")
-}
+    res.status(404).send("Not found");
+};
 
 const errorHandler = (error, req, res, next) => {
     console.error(error.message);
     if (error.name === "CastError") {
         return res.status(400).send("Incorrect formatting");
-    }
-    if (error.name === "MongoConnectionException") {
+    } else if (error.name === "MongoConnectionException") {
         return res.status(500).send("Server error. Please try again later");
-    }
-    if (error.name === "ValidationError") {
-        return res.status(400).send("Invalid data");
-    }
-    if (error.name === "MongoError" && error.code === 11000) {
+    } else if (error.name === "ValidationError") {
+        return res.status(400).send(`Received invalid data: ${error.message}`);
+    } else if (error.name === "MongoError" && error.code === 11000) {
         return res.status(409).send("Duplicate key error");
-    }
-    if (error.name === "MongoError" && error.code === 2) {
+    } else if (error.name === "MongoError" && error.code === 2) {
         return res.status(503).send("Operation failed");
+    } else {
+        next(error);
     }
-    next(error);
-}
+};
 
-app.get("/api/persons", (req, res) => {
+app.get("/api/persons", (req, res, next) => {
     Person
         .find({})
         .then(people => {
@@ -60,7 +57,7 @@ app.get("/api/persons/:id", async (req, res, next) => {
         .catch(err => next(err));
 });
 
-app.post("/api/persons/", (req, res) => {
+app.post("/api/persons/", (req, res, next) => {
     const newPerson = new Person({
         "name": req.body.name,
         "number": req.body.number
@@ -69,15 +66,9 @@ app.post("/api/persons/", (req, res) => {
     if (newPerson.name === undefined) {
         return res.status(400).send("Missing name");
     }
-
     if (newPerson.number === undefined) {
-        return res.status(400).send("Missing number")
+        return res.status(400).send("Missing number");
     }
-
-    // skip for now
-    // if (persons.some(p => p.name === newPerson.name)) {
-    //     return res.status(400).send(`Person with the same name already exists!`);
-    // }
 
     newPerson
         .save()
@@ -96,13 +87,13 @@ app.put("/api/persons/:id", (req, res, next) => {
     };
 
     Person
-        .findByIdAndUpdate(id, updatedPerson, { new: true })
+        .findByIdAndUpdate(id, updatedPerson, { new: true, runValidators: true, context: "query" })
         .then(updatedPerson => {
             res.status(200).json(updatedPerson);
             console.log(updatedPerson);
         })
         .catch(err => next(err));
-})
+});
 
 app.delete("/api/persons/:id", (req, res, next) => {
     const id = req.params.id;
@@ -111,22 +102,22 @@ app.delete("/api/persons/:id", (req, res, next) => {
         .then(foundPerson => {
             if (foundPerson) {
                 console.log(`Deleted ${foundPerson.name}`);
-                res.status(204).end()
+                res.status(204).end();
             }
             else {
-                console.log(`No matches found with the id ${pId}`);
+                console.log(`No matches found with the id ${id}`);
                 res.status(404).send("Not found");
             }
         })
         .catch(err => next(err));
 });
 
-app.get("/api/info", (req, res) => {
+app.get("/api/info", (req, res, next) => {
     const currentTime = new Date().toUTCString();
     Person
         .count()
         .then(count => {
-            res.send(`Phonebook has info for ${count} people <br /> ${currentTime}`)
+            res.send(`Phonebook has info for ${count} people <br /> ${currentTime}`);
         })
         .catch(err => next(err));
 });
@@ -135,5 +126,5 @@ app.use(unknownEndpoint);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
+    console.log(`Server running on port ${PORT}`);
 });
